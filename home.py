@@ -1,52 +1,47 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from streamlit_google_auth import Authenticate
+import json
+from streamlit_oauth import OAuth2Component
 
-# --- INITIALIZE GOOGLE AUTH ---
-if "authenticator" not in st.session_state:
-    st.session_state.authenticator = Authenticate(
-        secret_credentials_path='client_secret.json',
-        cookie_name='diacare_auth_cookie',
-        cookie_key='random_secret_key_123',
-        redirect_uri='http://localhost:8502/'
-    )
+# Load credentials from client_secret.json
+with open("client_secret.json", "r") as f:
+    config = json.load(f)["web"]
 
-authenticator = st.session_state.authenticator
+CLIENT_ID = config["client_id"]
+CLIENT_SECRET = config["client_secret"]
+AUTHORIZE_URL = config["auth_uri"]
+TOKEN_URL = config["token_uri"]
+REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
+REDIRECT_URI = "http://localhost:8502/"
 
-# Process URL auth token with error handling
-try:
-    authenticator.check_authentification()
-except Exception:
-    # Clear bad/expired URL tokens and reset query params
-    st.query_params.clear()
+# Initialize OAuth
+oauth2 = OAuth2Component(
+    CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL, REDIRECT_URI
+)
 
-# Block app until user logs in
-if not st.session_state.get('connected', False):
+# Authentication state check
+if "token" not in st.session_state:
     st.title("DiaCare - Diabetes Management")
     st.subheader("Please sign in to access your dashboard")
-    authenticator.login()
+    
+    result = oauth2.authorize_button(
+        name="Sign in with Google",
+        icon="https://www.google.com/favicon.ico",
+        redirect_uri=REDIRECT_URI,
+        scope="openid email profile",
+        key="google_auth",
+    )
+    
+    if result and "token" in result:
+        st.session_state["token"] = result["token"]
+        st.rerun()
     st.stop()
 
-# --- LOGGED IN SIDEBAR HEADER ---
-user_name = st.session_state.get('user_info', {}).get('name', 'User')
-st.sidebar.write(f"Logged in as: **{user_name}**")
-
+# Logout button in sidebar for logged-in users
 if st.sidebar.button("Logout"):
-    authenticator.logout()
-
-# --- LOGGED IN SIDEBAR HEADER ---
-user_name = st.session_state.get('user_info', {}).get('name', 'User')
-st.sidebar.write(f"Logged in as: **{user_name}**")
-
-if st.sidebar.button("Logout"):
-    authenticator.logout()
-
-# --- YOUR MAIN APP CONTINUES BELOW ---
-
-# --- YOUR MAIN APP CONTINUES BELOW ---
-import pandas as pd
-import streamlit as st
+    del st.session_state["token"]
+    st.rerun()
 
 st.set_page_config(page_title="DiaCare — Diabetes Management Platform", page_icon="🩸", layout="wide")
 
